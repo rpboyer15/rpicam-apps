@@ -9,6 +9,7 @@
 
 #include "core/rpicam_encoder.hpp"
 #include "encoder/null_encoder.hpp"
+#include "output/circular_output.hpp"
 #include "output/output.hpp"
 
 using namespace std::placeholders;
