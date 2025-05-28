@@ -6,11 +6,13 @@
  */
 
 #include <chrono>
+#include <termios.h>
 
 #include "core/rpicam_encoder.hpp"
 #include "encoder/null_encoder.hpp"
 #include "output/circular_output.hpp"
 #include "output/output.hpp"
+#include <unistd.h>
 
 using namespace std::placeholders;
 
@@ -38,13 +40,19 @@ static void event_loop(LibcameraRaw &app)
 		std::thread trigger_thread(
 			[&]()
 			{
+				static struct termios oldt;
+				tcgetattr(STDIN_FILENO, &oldt);
+				struct termios newt = oldt;
+				newt.c_lflag &= ~(ICANON);
+				tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+				std::atexit([] { tcsetattr(STDIN_FILENO, TCSANOW, &oldt); });
+
 				while (true)
 				{
 					char c;
-					std::cin.get(c);
-					if (c == 'd')
+					if (read(STDIN_FILENO, &c, 1) > 0 && c == 'd')
 					{
-						std::cerr << "[rpicam-raw] Triggered circular buffer dump.\n";
+						std::cerr << "[rpicam-raw] Triggered manual dump of circular buffer.\n";
 						circular_output_ptr->DumpToFile();
 					}
 				}
