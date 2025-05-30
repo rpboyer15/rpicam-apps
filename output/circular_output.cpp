@@ -6,6 +6,10 @@
  */
 
 #include "circular_output.hpp"
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 
 // We're going to align the frames within the buffer to friendly byte boundaries
 static constexpr int ALIGN = 16; // power of 2, please
@@ -26,7 +30,18 @@ CircularOutput::CircularOutput(VideoOptions const *options) : Output(options), c
 		fp_ = stdout;
 	else if (!options_->output.empty())
 	{
-		fp_ = fopen(options_->output.c_str(), "w");
+		// Get current time
+		auto now = std::chrono::system_clock::now();
+		std::time_t t = std::chrono::system_clock::to_time_t(now);
+
+		// Format timestamp
+		std::ostringstream filename;
+		filename << options_->output << "_";
+
+		// Format as YYYYMMDD_HHMMSS
+		filename << std::put_time(std::localtime(&t), "%Y%m%d_%H%M%S") << ".h264";
+
+		fp_ = fopen(filename.str().c_str(), "w");
 	}
 	if (!fp_)
 		throw std::runtime_error("could not open output file");
