@@ -4,12 +4,14 @@
  *
  * circular_output.cpp - Write output to circular buffer which we save on exit.
  */
+#include <chrono> // for std::chrono::system_clock
+#include <cstdio> // for fopen, fwrite, fclose
+#include <ctime> // for std::time_t, std::localtime
+#include <iomanip> // for std::put_time
+#include <iostream> // for std::cerr
+#include <sstream> // for std::ostringstream
 
 #include "circular_output.hpp"
-#include <chrono>
-#include <ctime>
-#include <iomanip>
-#include <sstream>
 
 // We're going to align the frames within the buffer to friendly byte boundaries
 static constexpr int ALIGN = 16; // power of 2, please
@@ -30,18 +32,7 @@ CircularOutput::CircularOutput(VideoOptions const *options) : Output(options), c
 		fp_ = stdout;
 	else if (!options_->output.empty())
 	{
-		// Get current time
-		auto now = std::chrono::system_clock::now();
-		std::time_t t = std::chrono::system_clock::to_time_t(now);
-
-		// Format timestamp
-		std::ostringstream filename;
-		filename << options_->output << "_";
-
-		// Format as YYYYMMDD_HHMMSS
-		filename << std::put_time(std::localtime(&t), "%Y%m%d_%H%M%S") << ".h264";
-
-		fp_ = fopen(filename.str().c_str(), "w");
+		fp_ = fopen(options_->output.c_str(), "w");
 	}
 	if (!fp_)
 		throw std::runtime_error("could not open output file");
@@ -116,10 +107,23 @@ void CircularOutput::timestampReady(int64_t timestamp)
 
 void CircularOutput::DumpToFile()
 {
+	// Generate a unique filename with timestamp
+	auto now = std::chrono::system_clock::now();
+	std::time_t t = std::chrono::system_clock::to_time_t(now);
+	std::ostringstream filename;
+	filename << options_->output << "_" << std::put_time(std::localtime(&t), "%Y%m%d_%H%M%S") << ".h264";
+
+	FILE *fp = fopen(filename.str().c_str(), "w");
+	if (!fp)
+	{
+		std::cerr << "Failed to open " << filename.str() << " for writing\n";
+		return;
+	}
+
 	unsigned int total = 0, frames = 0;
 	bool seen_keyframe = false;
 	Header header;
-	FILE *fp = fp_; // can't capture a class member in a lambda
+
 	while (!cb_.Empty())
 	{
 		uint8_t *dst = (uint8_t *)&header;
@@ -145,6 +149,6 @@ void CircularOutput::DumpToFile()
 		else
 			cb_.Skip((header.length + ALIGN - 1) & ~(ALIGN - 1));
 	}
-	fclose(fp_);
-	LOG(1, "Wrote " << total << " bytes (" << frames << " frames)");
+	fclose(fp);
+	LOG(1, "Dumped circular buffer to " << filename.str() << " (" << frames << " frames, " << total << " bytes)");
 }
