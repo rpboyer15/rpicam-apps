@@ -4,12 +4,15 @@
  *
  * circular_output.cpp - Write output to circular buffer which we save on exit.
  */
+
 #include <chrono> // for std::chrono::system_clock
 #include <cstdio> // for fopen, fwrite, fclose
+#include <cstring> // for memcpy
 #include <ctime> // for std::time_t, std::localtime
 #include <iomanip> // for std::put_time
 #include <iostream> // for std::cerr
 #include <sstream> // for std::ostringstream
+#include <stdexcept> // for std::runtime_error
 
 #include "circular_output.hpp"
 
@@ -40,12 +43,11 @@ CircularOutput::CircularOutput(VideoOptions const *options) : Output(options), c
 
 CircularOutput::~CircularOutput()
 {
-	// We do have to skip to the first I frame before dumping stuff to disk. If there are
-	// no I frames you will get nothing. Caveat emptor, methinks.
 	unsigned int total = 0, frames = 0;
 	bool seen_keyframe = false;
 	Header header;
 	FILE *fp = fp_; // can't capture a class member in a lambda
+
 	while (!cb_.Empty())
 	{
 		uint8_t *dst = (uint8_t *)&header;
@@ -56,6 +58,7 @@ CircularOutput::~CircularOutput()
 				dst += n;
 			},
 			sizeof(header));
+
 		seen_keyframe |= header.keyframe;
 		if (seen_keyframe)
 		{
@@ -63,26 +66,25 @@ CircularOutput::~CircularOutput()
 			cb_.Skip((ALIGN - header.length) & (ALIGN - 1));
 			total += header.length;
 			if (fp_timestamps_)
-			{
 				Output::timestampReady(header.timestamp);
-			}
 			frames++;
 		}
 		else
 			cb_.Skip((header.length + ALIGN - 1) & ~(ALIGN - 1));
 	}
+
 	fclose(fp_);
 	LOG(1, "Wrote " << total << " bytes (" << frames << " frames)");
 }
 
 void CircularOutput::outputBuffer(void *mem, size_t size, int64_t timestamp_us, uint32_t flags)
 {
-	// First make sure there's enough space.
 	int pad = (ALIGN - size) & (ALIGN - 1);
 	while (size + pad + sizeof(Header) > cb_.Available())
 	{
 		if (cb_.Empty())
 			throw std::runtime_error("circular buffer too small");
+
 		Header header;
 		uint8_t *dst = (uint8_t *)&header;
 		cb_.Read(
@@ -92,8 +94,10 @@ void CircularOutput::outputBuffer(void *mem, size_t size, int64_t timestamp_us, 
 				dst += n;
 			},
 			sizeof(header));
+
 		cb_.Skip((header.length + ALIGN - 1) & ~(ALIGN - 1));
 	}
+
 	Header header = { static_cast<unsigned int>(size), !!(flags & FLAG_KEYFRAME), timestamp_us };
 	cb_.Write(&header, sizeof(header));
 	cb_.Write(mem, size);
@@ -124,31 +128,33 @@ void CircularOutput::DumpToFile()
 	bool seen_keyframe = false;
 	Header header;
 
-	while (!cb_.Empty())
+	CircularBuffer temp_cb = cb_; // Copy the circular buffer so we don't consume it
+
+	while (!temp_cb.Empty())
 	{
 		uint8_t *dst = (uint8_t *)&header;
-		cb_.Read(
+		temp_cb.Read(
 			[&dst](void *src, int n)
 			{
 				memcpy(dst, src, n);
 				dst += n;
 			},
 			sizeof(header));
+
 		seen_keyframe |= header.keyframe;
 		if (seen_keyframe)
 		{
-			cb_.Read([fp](void *src, int n) { fwrite(src, 1, n, fp); }, header.length);
-			cb_.Skip((ALIGN - header.length) & (ALIGN - 1));
+			temp_cb.Read([fp](void *src, int n) { fwrite(src, 1, n, fp); }, header.length);
+			temp_cb.Skip((ALIGN - header.length) & (ALIGN - 1));
 			total += header.length;
 			if (fp_timestamps_)
-			{
 				Output::timestampReady(header.timestamp);
-			}
 			frames++;
 		}
 		else
-			cb_.Skip((header.length + ALIGN - 1) & ~(ALIGN - 1));
+			temp_cb.Skip((header.length + ALIGN - 1) & ~(ALIGN - 1));
 	}
+
 	fclose(fp);
 	LOG(1, "Dumped circular buffer to " << filename.str() << " (" << frames << " frames, " << total << " bytes)");
 }
