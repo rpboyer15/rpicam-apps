@@ -126,3 +126,8 @@ void CircularOutput::DumpToFile()
 	fclose(fp);
 	LOG(1, "Dumped circular buffer to " << filename.str() << " (" << frames << " frames, " << total << " bytes)");
 }
+
+void CircularOutput::Signal()
+{
+	DumpToFile();
+}
