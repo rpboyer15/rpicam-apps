@@ -6,13 +6,10 @@
  */
 
 #include <chrono>
-#include <termios.h>
 
 #include "core/rpicam_encoder.hpp"
 #include "encoder/null_encoder.hpp"
-#include "output/circular_output.hpp"
 #include "output/output.hpp"
-#include <unistd.h>
 
 using namespace std::placeholders;
 
@@ -32,33 +29,6 @@ static void event_loop(LibcameraRaw &app)
 {
 	VideoOptions const *options = app.GetOptions();
 	std::unique_ptr<Output> output = std::unique_ptr<Output>(Output::Create(options));
-
-	// Optional: store a casted pointer if CircularOutput
-	CircularOutput *circular_output_ptr = dynamic_cast<CircularOutput *>(output.get());
-	if (circular_output_ptr)
-	{
-		std::thread trigger_thread(
-			[&]()
-			{
-				static struct termios oldt;
-				tcgetattr(STDIN_FILENO, &oldt);
-				struct termios newt = oldt;
-				newt.c_lflag &= ~(ICANON);
-				tcsetattr(STDIN_FILENO, TCSANOW, &newt);
-				std::atexit([] { tcsetattr(STDIN_FILENO, TCSANOW, &oldt); });
-
-				while (true)
-				{
-					char c;
-					if (read(STDIN_FILENO, &c, 1) > 0 && c == 'd')
-					{
-						std::cerr << "[rpicam-raw] Triggered manual dump of circular buffer.\n";
-						circular_output_ptr->DumpToFile();
-					}
-				}
-			});
-		trigger_thread.detach();
-	}
 	app.SetEncodeOutputReadyCallback(std::bind(&Output::OutputReady, output.get(), _1, _2, _3, _4));
 	app.SetMetadataReadyCallback(std::bind(&Output::MetadataReady, output.get(), _1));
 
@@ -68,7 +38,7 @@ static void event_loop(LibcameraRaw &app)
 	app.StartCamera();
 	auto start_time = std::chrono::high_resolution_clock::now();
 
-	for (unsigned int count = 0;; count++)
+	for (unsigned int count = 0; ; count++)
 	{
 		LibcameraRaw::Msg msg = app.Wait();
 
