@@ -111,6 +111,7 @@ static void event_loop(RPiCamEncoder &app)
 			}
 			else
 			{
+				LOG(1, "Calling Output::Signal()");
 				output->Signal();
 			}
 		}
