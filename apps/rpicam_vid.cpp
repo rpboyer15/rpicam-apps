@@ -66,6 +66,7 @@ static void event_loop(RPiCamEncoder &app)
 {
 	VideoOptions const *options = app.GetOptions();
 	std::unique_ptr<Output> output = std::unique_ptr<Output>(Output::Create(options));
+	CircularOutput *circular_output_ptr = dynamic_cast<CircularOutput *>(output.get());
 	app.SetEncodeOutputReadyCallback(std::bind(&Output::OutputReady, output.get(), _1, _2, _3, _4));
 	app.SetMetadataReadyCallback(std::bind(&Output::MetadataReady, output.get(), _1));
 
@@ -85,7 +86,7 @@ static void event_loop(RPiCamEncoder &app)
 	signal(SIGPIPE, default_signal_handler);
 	pollfd p[1] = { { STDIN_FILENO, POLLIN, 0 } };
 
-	for (unsigned int count = 0; ; count++)
+	for (unsigned int count = 0;; count++)
 	{
 		RPiCamEncoder::Msg msg = app.Wait();
 		if (msg.type == RPiCamApp::MsgType::Timeout)
@@ -101,12 +102,20 @@ static void event_loop(RPiCamEncoder &app)
 			throw std::runtime_error("unrecognised message!");
 		int key = get_key_or_signal(options, p);
 		if (key == '\n')
-			output->Signal();
-
+		{
+			if (circular_output_ptr)
+			{
+				std::cerr << "[rpicam-vid] SIGUSR1 received: dumping circular buffer.\n";
+				circular_output_ptr->DumpToFile();
+			}
+			else
+			{
+				output->Signal();
+			}
+		}
 		LOG(2, "Viewfinder frame " << count);
 		auto now = std::chrono::high_resolution_clock::now();
-		bool timeout = !options->frames && options->timeout &&
-					   ((now - start_time) > options->timeout.value);
+		bool timeout = !options->frames && options->timeout && ((now - start_time) > options->timeout.value);
 		bool frameout = options->frames && count >= options->frames;
 		if (timeout || frameout || key == 'x' || key == 'X')
 		{
