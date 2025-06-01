@@ -9,6 +9,7 @@
 #include <cstdio> // for fopen, fwrite, fclose
 #include <cstring> // for memcpy
 #include <ctime> // for std::time_t, std::localtime
+#include <fstream>
 #include <iomanip> // for std::put_time
 #include <iostream> // for std::cerr
 #include <sstream> // for std::ostringstream
@@ -124,6 +125,11 @@ void CircularOutput::DumpToFile()
 	}
 
 	fclose(fp);
+	// Create a .done marker to signal completion
+	std::ofstream done_file(filename.str() + ".done");
+	done_file << "done";
+	done_file.close();
+
 	LOG(1, "Dumped circular buffer to " << filename.str() << " (" << frames << " frames, " << total << " bytes)");
 }
 
