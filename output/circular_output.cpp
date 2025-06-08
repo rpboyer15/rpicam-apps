@@ -5,20 +5,19 @@
  * circular_output.cpp - Write output to circular buffer which we save on exit.
  */
 
-#include <chrono> // for std::chrono::system_clock
-#include <cstdio> // for fopen, fwrite, fclose
-#include <cstring> // for memcpy
-#include <ctime> // for std::time_t, std::localtime
+#include <chrono>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
 #include <fstream>
-#include <iomanip> // for std::put_time
-#include <iostream> // for std::cerr
-#include <sstream> // for std::ostringstream
-#include <stdexcept> // for std::runtime_error
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <stdexcept>
 
 #include "circular_output.hpp"
 
-// We're going to align the frames within the buffer to friendly byte boundaries
-static constexpr int ALIGN = 16; // power of 2, please
+static constexpr int ALIGN = 16; // Power of 2
 
 struct Header
 {
@@ -28,7 +27,6 @@ struct Header
 };
 static_assert(sizeof(Header) % ALIGN == 0, "Header should have aligned size");
 
-// Size of buffer (options->circular) is given in megabytes.
 CircularOutput::CircularOutput(VideoOptions const *options)
 	: Output(options), cb_(options->circular << 20), fp_(nullptr)
 {
@@ -38,7 +36,7 @@ CircularOutput::CircularOutput(VideoOptions const *options)
 
 CircularOutput::~CircularOutput()
 {
-	// Do nothing. All dumping is handled via DumpToFile()
+	// Do nothing
 }
 
 void CircularOutput::outputBuffer(void *mem, size_t size, int64_t timestamp_us, uint32_t flags)
@@ -58,7 +56,6 @@ void CircularOutput::outputBuffer(void *mem, size_t size, int64_t timestamp_us, 
 				dst += n;
 			},
 			sizeof(header));
-
 		cb_.Skip((header.length + ALIGN - 1) & ~(ALIGN - 1));
 	}
 
@@ -70,7 +67,7 @@ void CircularOutput::outputBuffer(void *mem, size_t size, int64_t timestamp_us, 
 
 void CircularOutput::timestampReady(int64_t timestamp)
 {
-	// Don't want to save every timestamp as we go along, only outputs them at the end
+	// Don't want to save every timestamp as we go along
 }
 
 void CircularOutput::DumpToFile()
@@ -81,7 +78,6 @@ void CircularOutput::DumpToFile()
 		return;
 	}
 
-	// Generate a unique filename with timestamp
 	auto now = std::chrono::system_clock::now();
 	std::time_t t = std::chrono::system_clock::to_time_t(now);
 	std::ostringstream filename;
@@ -96,36 +92,30 @@ void CircularOutput::DumpToFile()
 
 	unsigned int total = 0, frames = 0;
 	bool seen_keyframe = false;
-	Header header;
 
-	// Use real buffer (not copy!)
-	while (!cb_.Empty())
+	size_t r = cb_.getReadPointer();
+	size_t w = cb_.getWritePointer();
+
+	while (r != w)
 	{
-		uint8_t *dst = (uint8_t *)&header;
-		cb_.Read(
-			[&dst](void *src, int n)
-			{
-				memcpy(dst, src, n);
-				dst += n;
-			},
-			sizeof(header));
+		Header header;
+		size_t pos = r;
+		cb_.Copy([&](void *src, unsigned int n) { memcpy(&header, src, n); }, pos, sizeof(header));
 
-		seen_keyframe |= header.keyframe;
-		if (seen_keyframe)
+		r = (r + sizeof(header)) % cb_.Size();
+
+		if (header.keyframe)
 		{
-			cb_.Read([fp](void *src, int n) { fwrite(src, 1, n, fp); }, header.length);
-			cb_.Skip((ALIGN - header.length) & (ALIGN - 1));
+			cb_.Copy([&](void *src, unsigned int n) { fwrite(src, 1, n, fp); }, r, header.length);
 			total += header.length;
-			if (fp_timestamps_)
-				Output::timestampReady(header.timestamp);
 			frames++;
 		}
-		else
-			cb_.Skip((header.length + ALIGN - 1) & ~(ALIGN - 1));
+
+		unsigned int padded_len = (header.length + ALIGN - 1) & ~(ALIGN - 1);
+		r = (r + padded_len) % cb_.Size();
 	}
 
 	fclose(fp);
-	// Create a .done marker to signal completion
 	std::ofstream done_file(filename.str() + ".done");
 	done_file << "done";
 	done_file.close();
