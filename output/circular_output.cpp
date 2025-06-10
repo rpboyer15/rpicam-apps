@@ -103,12 +103,9 @@ void CircularOutput::DumpToFile()
 
 		r = (r + sizeof(header)) % cb_.Size();
 
-		if (header.keyframe)
-		{
-			cb_.CopyFromAbsolutePosition([&](void *src, unsigned int n) { fwrite(src, 1, n, fp); }, r, header.length);
-			total += header.length;
-			frames++;
-		}
+		cb_.CopyFromAbsolutePosition([&](void *src, unsigned int n) { fwrite(src, 1, n, fp); }, r, header.length);
+		total += header.length;
+		frames++;
 
 		unsigned int padded_len = (header.length + ALIGN - 1) & ~(ALIGN - 1);
 		r = (r + padded_len) % cb_.Size();
