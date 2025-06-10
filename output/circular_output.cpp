@@ -91,7 +91,6 @@ void CircularOutput::DumpToFile()
 	}
 
 	unsigned int total = 0, frames = 0;
-	bool seen_keyframe = false;
 
 	size_t r = cb_.getReadPointer();
 	size_t w = cb_.getWritePointer();
