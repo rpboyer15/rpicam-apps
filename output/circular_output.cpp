@@ -92,37 +92,41 @@ void CircularOutput::DumpToFile()
 
 	unsigned int total = 0, frames = 0;
 
-	size_t r = last_dump_pos_;
 	size_t w = cb_.getWritePointer();
 	size_t buffer_size = cb_.Size();
-	size_t start = r;
+	size_t r = cb_.getReadPointer();
+	size_t search = r;
+	size_t latest_keyframe_pos = r;
 	bool found_keyframe = false;
 
-	// Search from last_dump_pos_ to w for the most recent keyframe
-	while (r != w)
+	// Step 1: search from read ptr to write ptr for the most recent keyframe
+	while (search != w)
 	{
 		Header header;
-		size_t pos = r;
+		size_t pos = search;
 		cb_.CopyFromAbsolutePosition([&](void *src, unsigned int n) { memcpy(&header, src, n); }, pos, sizeof(header));
 
-		r = (r + sizeof(header)) % buffer_size;
+		search = (search + sizeof(header)) % buffer_size;
 
 		if (header.keyframe)
-			start = pos, found_keyframe = true;
+		{
+			latest_keyframe_pos = pos;
+			found_keyframe = true;
+		}
 
 		unsigned int padded_len = (header.length + ALIGN - 1) & ~(ALIGN - 1);
-		r = (r + padded_len) % buffer_size;
+		search = (search + padded_len) % buffer_size;
 	}
 
 	if (!found_keyframe)
 	{
-		std::cerr << "[DumpToFile] No new keyframe since last dump. Skipping.\n";
+		std::cerr << "[DumpToFile] No keyframe found. Skipping.\n";
 		fclose(fp);
 		return;
 	}
 
-	// Write from last found keyframe to current write pointer
-	r = start;
+	// Step 2: write from latest keyframe to write pointer
+	r = latest_keyframe_pos;
 	while (r != w)
 	{
 		Header header;
@@ -140,15 +144,13 @@ void CircularOutput::DumpToFile()
 		r = (r + padded_len) % buffer_size;
 	}
 
-	last_dump_pos_ = w;
-
 	fclose(fp);
 	std::ofstream done_file(filename.str() + ".done");
 	done_file << "done";
 	done_file.close();
 
-	LOG(1, "Dumped circular buffer from last keyframe to " << filename.str() << " (" << frames << " frames, " << total
-														   << " bytes)");
+	LOG(1, "Dumped circular buffer from latest keyframe to " << filename.str() << " (" << frames << " frames, " << total
+															 << " bytes)");
 }
 
 void CircularOutput::Signal()
