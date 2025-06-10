@@ -94,31 +94,61 @@ void CircularOutput::DumpToFile()
 
 	size_t r = last_dump_pos_;
 	size_t w = cb_.getWritePointer();
+	size_t buffer_size = cb_.Size();
+	size_t start = r;
+	bool found_keyframe = false;
 
+	// First pass: find the most recent keyframe between r and w
 	while (r != w)
 	{
 		Header header;
 		size_t pos = r;
 		cb_.CopyFromAbsolutePosition([&](void *src, unsigned int n) { memcpy(&header, src, n); }, pos, sizeof(header));
 
-		r = (r + sizeof(header)) % cb_.Size();
+		r = (r + sizeof(header)) % buffer_size;
+
+		if (header.keyframe)
+			start = pos, found_keyframe = true;
+
+		unsigned int padded_len = (header.length + ALIGN - 1) & ~(ALIGN - 1);
+		r = (r + padded_len) % buffer_size;
+	}
+
+	if (!found_keyframe)
+	{
+		std::cerr << "[DumpToFile] No keyframe found. Skipping dump.\n";
+		fclose(fp);
+		return;
+	}
+
+	// Second pass: write from keyframe to write pointer
+	r = start;
+	while (r != w)
+	{
+		Header header;
+		size_t pos = r;
+		cb_.CopyFromAbsolutePosition([&](void *src, unsigned int n) { memcpy(&header, src, n); }, pos, sizeof(header));
+
+		r = (r + sizeof(header)) % buffer_size;
 
 		cb_.CopyFromAbsolutePosition([&](void *src, unsigned int n) { fwrite(src, 1, n, fp); }, r, header.length);
+
 		total += header.length;
 		frames++;
 
 		unsigned int padded_len = (header.length + ALIGN - 1) & ~(ALIGN - 1);
-		r = (r + padded_len) % cb_.Size();
+		r = (r + padded_len) % buffer_size;
 	}
 
 	last_dump_pos_ = w;
-
 	fclose(fp);
+
 	std::ofstream done_file(filename.str() + ".done");
 	done_file << "done";
 	done_file.close();
 
-	LOG(1, "Dumped circular buffer to " << filename.str() << " (" << frames << " frames, " << total << " bytes)");
+	LOG(1, "Dumped circular buffer from last keyframe to " << filename.str() << " (" << frames << " frames, " << total
+														   << " bytes)");
 }
 
 void CircularOutput::Signal()
