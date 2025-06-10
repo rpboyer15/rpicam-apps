@@ -45,7 +45,7 @@ static int get_key_or_signal(VideoOptions const *options, pollfd p[1])
 	if (options->signal)
 	{
 		if (signal_received == SIGUSR1)
-			key = '\n';
+			key = 's'; // use 's' to signal a save
 		else if ((signal_received == SIGUSR2) || (signal_received == SIGPIPE))
 			key = 'x';
 		signal_received = 0;
@@ -61,7 +61,7 @@ static int get_colourspace_flags(std::string const &codec)
 		return RPiCamEncoder::FLAG_VIDEO_NONE;
 }
 
-// The main even loop for the application.
+// The main event loop for the application.
 
 static void event_loop(RPiCamEncoder &app)
 {
@@ -81,10 +81,8 @@ static void event_loop(RPiCamEncoder &app)
 	signal(SIGUSR1, default_signal_handler);
 	signal(SIGUSR2, default_signal_handler);
 	signal(SIGINT, default_signal_handler);
-	// SIGPIPE gets raised when trying to write to an already closed socket. This can happen, when
-	// you're using TCP to stream to VLC and the user presses the stop button in VLC. Catching the
-	// signal to be able to react on it, otherwise the app terminates.
 	signal(SIGPIPE, default_signal_handler);
+
 	pollfd p[1] = { { STDIN_FILENO, POLLIN, 0 } };
 
 	for (unsigned int count = 0;; count++)
@@ -101,8 +99,10 @@ static void event_loop(RPiCamEncoder &app)
 			return;
 		else if (msg.type != RPiCamEncoder::MsgType::RequestComplete)
 			throw std::runtime_error("unrecognised message!");
+
 		int key = get_key_or_signal(options, p);
-		if (key == '\n')
+
+		if (key == 's')
 		{
 			if (circular_output_ptr)
 			{
@@ -115,6 +115,7 @@ static void event_loop(RPiCamEncoder &app)
 				output->Signal();
 			}
 		}
+
 		LOG(2, "Viewfinder frame " << count);
 		auto now = std::chrono::high_resolution_clock::now();
 		bool timeout = !options->frames && options->timeout && ((now - start_time) > options->timeout.value);
@@ -124,17 +125,16 @@ static void event_loop(RPiCamEncoder &app)
 			if (timeout)
 				LOG(1, "Halting: reached timeout of " << options->timeout.get<std::chrono::milliseconds>()
 													  << " milliseconds.");
-			app.StopCamera(); // stop complains if encoder very slow to close
+			app.StopCamera();
 			app.StopEncoder();
 			return;
 		}
+
 		CompletedRequestPtr &completed_request = std::get<CompletedRequestPtr>(msg.payload);
 		if (!app.EncodeBuffer(completed_request, app.VideoStream()))
 		{
-			// Keep advancing our "start time" if we're still waiting to start recording (e.g.
-			// waiting for synchronisation with another camera).
 			start_time = now;
-			count = 0; // reset the "frames encoded" counter too
+			count = 0;
 		}
 		app.ShowPreview(completed_request, app.VideoStream());
 	}
