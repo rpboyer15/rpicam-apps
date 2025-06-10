@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2020, Raspberry Pi (Trading) Ltd.
  *
- * circular_output.cpp - Write output to circular buffer which we save on exit.
+ * circular_output.cpp - Write output to circular buffer which we save on signal.
  */
 
 #include <chrono>
@@ -67,7 +67,7 @@ void CircularOutput::outputBuffer(void *mem, size_t size, int64_t timestamp_us, 
 
 void CircularOutput::timestampReady(int64_t timestamp)
 {
-	// Don't want to save every timestamp as we go along
+	// No-op for now
 }
 
 void CircularOutput::DumpToFile()
@@ -92,7 +92,7 @@ void CircularOutput::DumpToFile()
 
 	unsigned int total = 0, frames = 0;
 
-	size_t r = cb_.getReadPointer();
+	size_t r = last_dump_pos_;
 	size_t w = cb_.getWritePointer();
 
 	while (r != w)
@@ -113,6 +113,8 @@ void CircularOutput::DumpToFile()
 		unsigned int padded_len = (header.length + ALIGN - 1) & ~(ALIGN - 1);
 		r = (r + padded_len) % cb_.Size();
 	}
+
+	last_dump_pos_ = w;
 
 	fclose(fp);
 	std::ofstream done_file(filename.str() + ".done");

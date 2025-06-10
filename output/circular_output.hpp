@@ -112,4 +112,5 @@ protected:
 private:
 	CircularBuffer cb_;
 	FILE *fp_;
+	size_t last_dump_pos_ = 0;
 };
