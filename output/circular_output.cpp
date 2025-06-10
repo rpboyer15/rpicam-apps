@@ -99,13 +99,13 @@ void CircularOutput::DumpToFile()
 	{
 		Header header;
 		size_t pos = r;
-		cb_.Copy([&](void *src, unsigned int n) { memcpy(&header, src, n); }, pos, sizeof(header));
+		cb_.CopyFromAbsolutePosition([&](void *src, unsigned int n) { memcpy(&header, src, n); }, pos, sizeof(header));
 
 		r = (r + sizeof(header)) % cb_.Size();
 
 		if (header.keyframe)
 		{
-			cb_.Copy([&](void *src, unsigned int n) { fwrite(src, 1, n, fp); }, r, header.length);
+			cb_.CopyFromAbsolutePosition([&](void *src, unsigned int n) { fwrite(src, 1, n, fp); }, r, header.length);
 			total += header.length;
 			frames++;
 		}

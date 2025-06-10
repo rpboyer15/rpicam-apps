@@ -86,6 +86,21 @@ public:
 		}
 	}
 
+	void CopyFromAbsolutePosition(std::function<void(void *src, unsigned int n)> dst, size_t pos, unsigned int n) const
+	{
+		pos = pos % size_;
+		if (pos + n > size_)
+		{
+			unsigned int first = size_ - pos;
+			dst((void *)&buf_[pos], first);
+			dst((void *)&buf_[0], n - first);
+		}
+		else
+		{
+			dst((void *)&buf_[pos], n);
+		}
+	}
+
 	size_t getReadPointer() const { return rptr_; }
 	size_t getWritePointer() const { return wptr_; }
 
