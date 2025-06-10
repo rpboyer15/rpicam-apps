@@ -92,13 +92,13 @@ void CircularOutput::DumpToFile()
 
 	unsigned int total = 0, frames = 0;
 
-	size_t r = cb_.getReadPointer();
+	size_t r = last_dump_pos_;
 	size_t w = cb_.getWritePointer();
 	size_t buffer_size = cb_.Size();
 	size_t start = r;
 	bool found_keyframe = false;
 
-	// First pass: find the most recent keyframe in the buffer
+	// Search from last_dump_pos_ to w for the most recent keyframe
 	while (r != w)
 	{
 		Header header;
@@ -116,12 +116,12 @@ void CircularOutput::DumpToFile()
 
 	if (!found_keyframe)
 	{
-		std::cerr << "[DumpToFile] No keyframe found. Skipping dump.\n";
+		std::cerr << "[DumpToFile] No new keyframe since last dump. Skipping.\n";
 		fclose(fp);
 		return;
 	}
 
-	// Second pass: write from keyframe to current write pointer
+	// Write from last found keyframe to current write pointer
 	r = start;
 	while (r != w)
 	{
