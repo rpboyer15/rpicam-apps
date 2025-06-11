@@ -129,4 +129,5 @@ private:
 	FILE *fp_;
 	size_t last_keyframe_pos_ = 0;
 	bool keyframe_seen_ = false;
+	size_t latest_keyframe_pos_ = 0;
 };
