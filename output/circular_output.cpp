@@ -28,7 +28,7 @@ struct Header
 static_assert(sizeof(Header) % ALIGN == 0, "Header should have aligned size");
 
 CircularOutput::CircularOutput(VideoOptions const *options)
-	: Output(options), cb_(options->circular << 20), fp_(nullptr)
+	: Output(options), cb_(options->circular << 20), fp_(nullptr), latest_keyframe_pos_(0)
 {
 	if (options_->output == "-")
 		fp_ = stdout;
@@ -94,7 +94,7 @@ void CircularOutput::DumpToFile()
 
 	size_t w = cb_.getWritePointer();
 	size_t buffer_size = cb_.Size();
-	size_t r = cb_.getReadPointer();
+	size_t r = latest_keyframe_pos_;
 	size_t search = r;
 	size_t latest_keyframe_pos = r;
 	bool found_keyframe = false;
@@ -148,6 +148,9 @@ void CircularOutput::DumpToFile()
 	std::ofstream done_file(filename.str() + ".done");
 	done_file << "done";
 	done_file.close();
+
+	// Update latest_keyframe_pos_ so that next dump starts at the new position
+	latest_keyframe_pos_ = latest_keyframe_pos;
 
 	LOG(1, "Dumped circular buffer from latest keyframe to " << filename.str() << " (" << frames << " frames, " << total
 															 << " bytes)");
